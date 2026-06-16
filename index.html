@@ -1,0 +1,969 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>PitchScope · Shadowing</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@400;500;600;700&display=swap');
+
+:root{
+  --bg:#090d16; --surf:#0f1622; --surf2:#141c2a; --bord:#1e2d3e; --bord2:#26394a;
+  --mod:#ff7043; --usr:#22d3ee; --ok:#4ade80; --acc:#818cf8;
+  --txt:#e2e8f0; --txtm:#94a3b8; --txtd:#475569; --red:#f87171; --amb:#fbbf24;
+}
+*{ box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
+html,body{ height:100%; background:var(--bg); color:var(--txt); font-family:'Inter',sans-serif; overflow:hidden; }
+#app{ display:flex; flex-direction:column; height:100dvh; }
+
+/* ── HEADER ── */
+header{ height:44px; padding:0 14px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--bord); flex-shrink:0; }
+.logo{ font-family:'Space Mono',monospace; font-size:13px; letter-spacing:.18em; color:var(--usr); }
+.logo em{ color:var(--txt); opacity:.3; font-style:normal; }
+
+/* ── STEPS ── */
+.steps{ display:flex; align-items:center; gap:5px; }
+.stp{ display:flex; align-items:center; gap:4px; font-size:10px; color:var(--txtd); transition:color .4s; }
+.stp.on{ color:var(--usr); } .stp.dn{ color:var(--ok); }
+.sdot{ width:6px; height:6px; border-radius:50%; background:var(--txtd); transition:background .4s,box-shadow .4s; }
+.stp.on .sdot{ background:var(--usr); box-shadow:0 0 6px var(--usr); }
+.stp.dn .sdot{ background:var(--ok); box-shadow:0 0 4px var(--ok); }
+.sln{ width:14px; height:1px; background:var(--bord); }
+
+/* ── CANVAS AREA ── */
+#ca{ flex:1; position:relative; overflow:hidden; }
+canvas{ display:block; position:absolute; inset:0; width:100%; height:100%; }
+
+/* ── OVERLAYS ── */
+.ov{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; z-index:10; }
+.ov[hidden]{ display:none !important; }
+#ov-idle{ background:rgba(9,13,22,.92); }
+#ov-cd{   background:rgba(9,13,22,.85); backdrop-filter:blur(4px); }
+
+/* WELCOME CARD */
+.wc{ text-align:center; padding:22px 20px 24px; max-width:300px; width:93%;
+     background:var(--surf); border:1px solid var(--bord); border-radius:20px; }
+.wi{ font-size:42px; margin-bottom:14px; display:block; animation:fl 3s ease-in-out infinite; }
+@keyframes fl{ 0%,100%{ transform:translateY(0); } 50%{ transform:translateY(-7px); } }
+.wc h2{ font-size:20px; font-weight:700; margin-bottom:9px; letter-spacing:-.02em; line-height:1.22; }
+.wc>p{ font-size:12.5px; color:var(--txtm); line-height:1.65; margin-bottom:18px; }
+.hws{ display:flex; flex-direction:column; gap:8px; margin-bottom:20px; text-align:left; }
+.hw{ display:flex; align-items:center; gap:9px; font-size:12px; color:var(--txtm); }
+.hn{ width:20px; height:20px; border-radius:50%; background:var(--surf2); border:1px solid var(--bord);
+     display:flex; align-items:center; justify-content:center; font-family:'Space Mono',monospace;
+     font-size:10px; color:var(--acc); flex-shrink:0; }
+.fmt{ margin-top:8px; font-size:10.5px; color:var(--txtd); }
+
+/* COUNTDOWN */
+.cdb{ text-align:center; }
+#cd-n{ font-family:'Space Mono',monospace; font-size:100px; font-weight:700; color:var(--mod);
+       line-height:1; display:block; animation:pop .5s ease-out; }
+@keyframes pop{ 0%{ transform:scale(1.7); opacity:.15; } 100%{ transform:scale(1); opacity:1; } }
+.cd-t{ font-size:13px; color:var(--txtm); margin-top:10px; display:block; letter-spacing:.04em; }
+
+/* ── LIVE STATS ── */
+#ls{ display:none; background:var(--surf2); border-top:1px solid var(--bord);
+     padding:5px 14px; align-items:center; justify-content:space-between; flex-shrink:0; }
+#ls.on{ display:flex; }
+.si{ display:flex; align-items:center; gap:5px; }
+.sd{ width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+.sl{ font-family:'Space Mono',monospace; font-size:9px; color:var(--txtd); }
+.sv{ font-family:'Space Mono',monospace; font-size:11px; color:var(--txt); }
+#db{ font-family:'Space Mono',monospace; font-size:10px; padding:2px 10px;
+     border-radius:100px; border:1px solid var(--bord); color:var(--txtd); transition:all .35s; }
+#db.g{ border-color:rgba(74,222,128,.4); color:var(--ok); background:rgba(74,222,128,.07); }
+#db.y{ border-color:rgba(251,191,36,.35); color:var(--amb); background:rgba(251,191,36,.06); }
+#db.r{ border-color:rgba(248,113,113,.3); color:var(--red); background:rgba(248,113,113,.06); }
+
+/* ── CONTROLS ── */
+#ctrl{ flex-shrink:0; background:var(--surf); border-top:1px solid var(--bord);
+       padding:10px 14px 13px; display:flex; flex-direction:column; gap:8px; }
+.cr{ display:flex; align-items:center; gap:8px; }
+
+/* BUTTONS */
+.btn{ border:none; cursor:pointer; font-family:'Inter',sans-serif; font-weight:600;
+      border-radius:100px; display:flex; align-items:center; justify-content:center;
+      gap:6px; transition:transform .15s, box-shadow .2s; font-size:13px; }
+.btn:active{ transform:scale(.94); }
+.bp{ background:linear-gradient(135deg,#818cf8,#6366f1); color:#fff; padding:13px 18px; flex:1;
+     box-shadow:0 4px 18px rgba(99,102,241,.28); }
+.bp:hover{ box-shadow:0 4px 26px rgba(99,102,241,.44); }
+.br{ background:linear-gradient(135deg,#ff7043,#f43f5e); color:#fff; padding:12px 18px; flex:1;
+     box-shadow:0 4px 16px rgba(244,63,94,.24); }
+.br:hover{ box-shadow:0 4px 24px rgba(244,63,94,.42); }
+.bs{ background:transparent; border:1px solid var(--bord); color:var(--txtm); padding:10px 14px; font-size:12px; }
+.bs:hover{ border-color:var(--bord2); color:var(--txt); }
+.bi{ width:40px; height:40px; border-radius:50%; background:var(--surf2); border:1px solid var(--bord);
+     color:var(--txtm); flex-shrink:0; }
+.bi.dr{ border-color:rgba(248,113,113,.25); color:var(--red); }
+
+/* PREVIEW STRIP */
+.prow{ display:flex; align-items:center; gap:8px; }
+#pvt{ width:36px; height:36px; border-radius:50%; background:rgba(255,112,67,.1);
+      border:1.5px solid var(--mod); color:var(--mod); display:flex; align-items:center;
+      justify-content:center; cursor:pointer; flex-shrink:0; transition:all .2s; border:none; }
+#pvt:active{ transform:scale(.91); }
+.pm{ flex:1; overflow:hidden; }
+.pn{ font-size:11px; color:var(--txt); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pd{ font-family:'Space Mono',monospace; font-size:9px; color:var(--txtd); margin-top:1px; }
+#pw{ height:3px; background:var(--bord); border-radius:2px; cursor:pointer; margin-top:4px; }
+#pb{ height:100%; background:var(--mod); border-radius:2px; width:0%; transition:width .08s linear; }
+
+/* TIMER */
+.ptm{ font-family:'Space Mono',monospace; font-size:14px; color:var(--txt); }
+.ptd{ font-family:'Space Mono',monospace; font-size:11px; color:var(--txtd); }
+
+/* SLIDER */
+.cl{ font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.08em;
+     text-transform:uppercase; color:var(--txtd); flex-shrink:0; }
+.cv{ font-family:'Space Mono',monospace; font-size:10px; color:var(--acc);
+     min-width:26px; text-align:right; flex-shrink:0; }
+input[type=range]{ -webkit-appearance:none; flex:1; height:3px; border-radius:2px;
+                   background:var(--bord); outline:none; }
+input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; width:14px; height:14px;
+  border-radius:50%; background:var(--acc); cursor:pointer; box-shadow:0 0 5px rgba(129,140,248,.4); }
+
+/* SCORE PANEL */
+#sc-panel{ background:var(--surf2); border:1px solid var(--bord); border-radius:14px;
+           padding:11px 14px; }
+.sc-top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:3px; }
+#sc-stars{ font-size:14px; letter-spacing:2px; }
+#sc-num{ font-family:'Space Mono',monospace; font-size:20px; font-weight:700; }
+#sc-lbl{ font-size:13px; font-weight:600; color:var(--txt); }
+
+/* TOAST */
+#toast{ position:fixed; bottom:76px; left:50%; transform:translateX(-50%);
+        background:rgba(9,13,22,.96); border:1px solid var(--bord); border-radius:20px;
+        padding:7px 18px; font-size:12px; color:var(--txtm); opacity:0; transition:opacity .4s;
+        pointer-events:none; white-space:nowrap; z-index:200; }
+#toast.on{ opacity:1; }
+#fi{ display:none; }
+</style>
+</head>
+<body>
+<div id="app">
+
+<header>
+  <div class="logo">PITCH<em>SCOPE</em></div>
+  <div class="steps">
+    <div class="stp on" id="s1"><div class="sdot"></div><span>Modelo</span></div>
+    <div class="sln"></div>
+    <div class="stp" id="s2"><div class="sdot"></div><span>Práctica</span></div>
+    <div class="sln"></div>
+    <div class="stp" id="s3"><div class="sdot"></div><span>Revisión</span></div>
+  </div>
+</header>
+
+<div id="ca">
+  <canvas id="cv"></canvas>
+
+  <!-- IDLE OVERLAY -->
+  <div class="ov" id="ov-idle">
+    <div class="wc">
+      <span class="wi">🎙</span>
+      <h2>Shadowing de<br>entonación</h2>
+      <p>Cargá un audio modelo, escuchalo y repetilo al mismo tiempo. Tu curva de pitch y la del modelo se comparan en tiempo real, normalizadas para que cualquier voz sea comparable.</p>
+      <div class="hws">
+        <div class="hw"><div class="hn">1</div><span>Cargá un audio en el idioma que estudiás</span></div>
+        <div class="hw"><div class="hn">2</div><span>Escuchá y repetí simultáneamente (shadowing)</span></div>
+        <div class="hw"><div class="hn">3</div><span>Comparás las curvas y obtenés un puntaje</span></div>
+      </div>
+      <button class="btn bp" id="btn-hero" style="width:100%;margin-bottom:9px;font-size:14px;padding:14px">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/>
+        </svg>
+        Cargar audio modelo
+      </button>
+      <div class="fmt">MP3 · WAV · M4A · OGG · y más</div>
+    </div>
+  </div>
+
+  <!-- COUNTDOWN OVERLAY -->
+  <div class="ov" id="ov-cd" hidden>
+    <div class="cdb">
+      <span id="cd-n">3</span>
+      <span class="cd-t">Preparate para imitar</span>
+    </div>
+  </div>
+</div>
+
+<!-- LIVE STATS BAR -->
+<div id="ls">
+  <div class="si">
+    <div class="sd" style="background:var(--mod)"></div>
+    <span class="sl">MODELO</span>
+    <span class="sv" id="lm">— Hz</span>
+  </div>
+  <div id="db">Δ — st</div>
+  <div class="si">
+    <div class="sd" style="background:var(--usr)"></div>
+    <span class="sl">TU VOZ</span>
+    <span class="sv" id="lu">— Hz</span>
+  </div>
+</div>
+
+<div id="ctrl">
+
+  <!-- SECTION: PREVIEW -->
+  <div id="cp" hidden>
+    <div class="prow">
+      <button id="pvt" style="background:rgba(255,112,67,.1);border:1.5px solid var(--mod);color:var(--mod);width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer">
+        <svg id="ic-pvplay" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        <svg id="ic-pvpause" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+      </button>
+      <div class="pm">
+        <div class="pn" id="mn">modelo</div>
+        <div class="pd" id="md">0:00</div>
+        <div id="pw"><div id="pb"></div></div>
+      </div>
+      <button class="btn br" id="btn-prac" style="min-width:108px">🎙 Practicar</button>
+    </div>
+    <div style="margin-top:5px;text-align:right">
+      <button class="btn bs" id="btn-chg" style="font-size:11px;padding:6px 12px">Cambiar modelo</button>
+    </div>
+  </div>
+
+  <!-- SECTION: PRACTICING -->
+  <div id="cpr" hidden>
+    <div class="cr">
+      <button class="btn bi" id="btn-pause">
+        <svg id="ic-pause" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+        <svg id="ic-play" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" style="display:none"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      </button>
+      <div style="flex:1;text-align:center">
+        <span class="ptm" id="pt">0:00</span>
+        <span class="ptd"> / </span>
+        <span class="ptd" id="ptot">0:00</span>
+      </div>
+      <button class="btn bi dr" id="btn-stop">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+      </button>
+    </div>
+    <div class="cr">
+      <span class="cl">Ventana</span>
+      <input type="range" id="rw" min="2" max="10" step="0.5" value="5">
+      <span class="cv"><span id="vw">5</span>s</span>
+    </div>
+  </div>
+
+  <!-- SECTION: REVIEW -->
+  <div id="crv" hidden>
+    <div id="sc-panel">
+      <div class="sc-top">
+        <span id="sc-stars" style="color:var(--amb)">○ ○ ○ ○ ○</span>
+        <span id="sc-num">—</span>
+      </div>
+      <div id="sc-lbl" style="color:var(--txtm)">Calculando...</div>
+    </div>
+    <div class="cr">
+      <button class="btn br" id="btn-retry">↺ Intentar de nuevo</button>
+      <button class="btn bs" id="btn-newm">Nuevo modelo</button>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<input type="file" id="fi" accept="audio/*">
+<div id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+//  CONSTANTS
+// ═══════════════════════════════════════════════════════
+const MIN_HZ=50, MAX_HZ=400, ST_R=8;
+const DPR=window.devicePixelRatio||1;
+const GAP=0.14; // gap in seconds between voiced segments
+const NOTE=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+// Canvas padding
+const PL=40, PT=18, PR=8, PB=18;
+
+// Drawing colors
+const BG='#090d16';
+const CMOD='#ff7043', CMODF='rgba(255,112,67,.10)';
+const CUSR='#22d3ee', CUSRF='rgba(34,211,238,.10)';
+const CGRID='#0f1c28', CGRIDM='#182840', CCTR='#1c3450';
+const CTDIM='#182838', CTMID='#243848';
+const CMOK='rgba(74,222,128,.18)', CMAMB='rgba(251,191,36,.10)', CMRED='rgba(248,113,113,.08)';
+
+// ═══════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════
+let phase='idle'; // idle|preview|countdown|practicing|paused|review
+let wSec=5;
+
+// Model
+let mAudioBuf=null, mPitch=[], mNorm=[], mMeanST=0, mDur=0;
+
+// Preview playback
+let pvCtx=null, pvSrc=null, pvOn=false, pvOff=0, pvWall=0, pvRaf=null;
+
+// Practice audio + mic
+let praCtx=null, praSrc=null;
+let micCtx=null, micStream=null, micSrc=null, micAn=null, micBuf=null;
+
+// User pitch data (during practice)
+let uRaw=[], uSumST=0; // [{t,hz,st}] st=absolute semitone 12*log2(hz)
+
+// Practice timing
+let prOff=0, prWall=0, prEl=0, prPaused=false, prRaf=null;
+
+// Review data (frozen snapshot)
+let rvModelNorm=[], rvUserRaw=[], rvUMean=0, rvScore=null;
+
+// Idle demo animation
+let demoT=0, demoRaf=null;
+
+// ═══════════════════════════════════════════════════════
+//  CANVAS SETUP
+// ═══════════════════════════════════════════════════════
+const cv=document.getElementById('cv');
+const ca=document.getElementById('ca');
+
+function resize(){
+  cv.width=ca.clientWidth*DPR;
+  cv.height=ca.clientHeight*DPR;
+}
+window.addEventListener('resize',()=>{ resize(); draw(); });
+resize();
+
+function gctx(){
+  const c=cv.getContext('2d');
+  c.setTransform(DPR,0,0,DPR,0,0);
+  return c;
+}
+const CW=()=>cv.clientWidth;
+const CH=()=>cv.clientHeight;
+
+// ═══════════════════════════════════════════════════════
+//  PITCH UTILITIES
+// ═══════════════════════════════════════════════════════
+const hST=hz=>12*Math.log2(hz);
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const fmtT=s=>{ const i=Math.floor(s); return Math.floor(i/60)+':'+(i%60<10?'0':'')+(i%60); };
+function hzNote(hz){
+  const m=Math.round(69+12*Math.log2(hz/440));
+  return NOTE[((m%12)+12)%12]+(Math.floor(m/12)-1);
+}
+
+function detectPitch(buf,sr){
+  const half=buf.length>>1, thr=0.15;
+  const d=new Float32Array(half);
+  let run=0; d[0]=1;
+  for(let tau=1;tau<half;tau++){
+    let s=0;
+    for(let i=0;i<half;i++){ const x=buf[i]-buf[i+tau]; s+=x*x; }
+    run+=s; d[tau]=s*tau/run;
+    if(tau>2&&d[tau]<thr){
+      while(tau+1<half&&d[tau+1]<d[tau]) tau++;
+      const x0=d[tau-1], x1=d[tau], x2=tau+1<half?d[tau+1]:x1;
+      return sr/(tau+(x2-x0)/(2*(2*x1-x2-x0)+1e-9));
+    }
+  }
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════
+//  NORMALIZATION
+// ═══════════════════════════════════════════════════════
+function computeModelNorm(){
+  if(!mPitch.length) return;
+  const sts=mPitch.map(p=>hST(p.hz));
+  mMeanST=sts.reduce((a,b)=>a+b,0)/sts.length;
+  mNorm=mPitch.map((p,i)=>({ t:p.t, st:sts[i]-mMeanST }));
+}
+
+// Running user mean from practice session
+const uMean=()=> uRaw.length ? uSumST/uRaw.length : hST(150);
+const uNormST=absST=> absST-uMean();
+
+// ═══════════════════════════════════════════════════════
+//  COORDINATE HELPERS
+// ═══════════════════════════════════════════════════════
+// Semitone → Y pixel.  +ST_R = top, -ST_R = bottom
+function stY(st,h){ return PT+(1-(st+ST_R)/(2*ST_R))*(h-PT-PB); }
+// Time → X pixel (scrolling window)
+function txW(t,now,w){ return PL+((t-(now-wSec))/wSec)*(w-PL-PR); }
+// Time → X pixel (review full session)
+function txR(t,dur,w){ return PL+(t/dur)*(w-PL-PR); }
+
+// ═══════════════════════════════════════════════════════
+//  DRAWING HELPERS
+// ═══════════════════════════════════════════════════════
+function drawYAxis(ctx,w,h){
+  ctx.font='8px "Space Mono",monospace'; ctx.textAlign='right';
+  for(const st of [-8,-6,-4,-2,0,2,4,6,8]){
+    const y=stY(st,h); if(y<0||y>h) continue;
+    const isC=st===0, is4=st%4===0&&st!==0;
+    ctx.strokeStyle=isC?CCTR:is4?CGRIDM:CGRID;
+    ctx.lineWidth=isC?1.2:is4?.55:.25;
+    ctx.beginPath(); ctx.moveTo(PL,y); ctx.lineTo(w-PR,y); ctx.stroke();
+    ctx.fillStyle=isC?'#2c4a62':is4?CTMID:CTDIM;
+    ctx.fillText((st>0?'+':'')+st,PL-3,y+3);
+  }
+  // Axis label rotated
+  ctx.save(); ctx.translate(9,h/2); ctx.rotate(-Math.PI/2);
+  ctx.font='7px "Space Mono",monospace'; ctx.fillStyle='#182838'; ctx.textAlign='center';
+  ctx.fillText('semitonos rel.',0,0); ctx.restore();
+  // Center label
+  ctx.font='7px "Space Mono",monospace'; ctx.fillStyle='#243c54'; ctx.textAlign='left';
+  ctx.fillText('centro',PL+4,stY(0,h)-4);
+}
+
+function drawXAxis(ctx,w,h,mode,nowOrDur){
+  const span=mode==='rv'?nowOrDur:wSec;
+  const step=span<=3?.5:span<=7?1:2;
+  ctx.strokeStyle=CGRID; ctx.lineWidth=.35;
+  ctx.font='8px "Space Mono",monospace'; ctx.fillStyle=CTMID; ctx.textAlign='center';
+  for(let dt=0;dt<=span+.01;dt+=step){
+    const x=mode==='rv' ? txR(dt,span,w) : txW(nowOrDur-span+dt,nowOrDur,w);
+    ctx.beginPath(); ctx.moveTo(x,PT); ctx.lineTo(x,h-PB+2); ctx.stroke();
+    const lbl=mode==='rv' ? fmtT(dt) : '-'+(span-dt).toFixed(span<=3?1:0)+'s';
+    ctx.fillText(lbl,x,h-3);
+  }
+}
+
+function drawLegend(ctx,w,h,showUser){
+  const x=PL+5, y=PT+5;
+  // Model
+  ctx.fillStyle=CMOD; ctx.shadowColor=CMOD; ctx.shadowBlur=4;
+  ctx.beginPath(); ctx.arc(x+4,y+4,3,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
+  ctx.fillStyle='#3a5568'; ctx.font='8px "Inter",sans-serif'; ctx.textAlign='left';
+  ctx.fillText('Modelo',x+11,y+8);
+  if(showUser){
+    ctx.fillStyle=CUSR; ctx.shadowColor=CUSR; ctx.shadowBlur=4;
+    ctx.beginPath(); ctx.arc(x+4,y+18,3,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
+    ctx.fillStyle='#3a5568';
+    ctx.fillText('Tu voz',x+11,y+22);
+  }
+}
+
+// Draw a normalized pitch curve with fill
+function drawCurve(ctx,pts,xFn,yFn,col,fill,lw,h){
+  if(!pts.length) return;
+  // Split into voiced segments by gap
+  const segs=[]; let seg=[pts[0]];
+  for(let i=1;i<pts.length;i++){
+    if(pts[i].t-pts[i-1].t>GAP){ segs.push(seg); seg=[]; }
+    seg.push(pts[i]);
+  }
+  segs.push(seg);
+
+  for(const s of segs){
+    if(!s.length) continue;
+    if(s.length===1){
+      ctx.fillStyle=col;
+      ctx.beginPath(); ctx.arc(xFn(s[0]),yFn(s[0]),2,0,Math.PI*2); ctx.fill();
+      continue;
+    }
+    // Fill under curve
+    ctx.beginPath(); ctx.moveTo(xFn(s[0]),yFn(s[0]));
+    for(let i=1;i<s.length;i++) ctx.lineTo(xFn(s[i]),yFn(s[i]));
+    ctx.lineTo(xFn(s[s.length-1]),h-PB); ctx.lineTo(xFn(s[0]),h-PB);
+    ctx.closePath(); ctx.fillStyle=fill; ctx.fill();
+    // Glowing line
+    ctx.shadowColor=col; ctx.shadowBlur=10;
+    ctx.strokeStyle=col; ctx.lineWidth=lw; ctx.lineJoin='round'; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(xFn(s[0]),yFn(s[0]));
+    for(let i=1;i<s.length;i++) ctx.lineTo(xFn(s[i]),yFn(s[i]));
+    ctx.stroke(); ctx.shadowBlur=0;
+  }
+}
+
+// Draw colored fill between two curves
+function drawMatchFill(ctx,mPts,uPts,xFn,mYFn,uYFn,steps=80){
+  if(!mPts.length||!uPts.length) return;
+  const tMin=Math.max(mPts[0].t,uPts[0].t);
+  const tMax=Math.min(mPts[mPts.length-1].t,uPts[uPts.length-1].t);
+  if(tMax<=tMin) return;
+  for(let i=0;i<steps;i++){
+    const t=tMin+(i+.5)/steps*(tMax-tMin);
+    const mn=mPts.reduce((b,p)=>Math.abs(p.t-t)<Math.abs(b.t-t)?p:b,mPts[0]);
+    const un=uPts.reduce((b,p)=>Math.abs(p.t-t)<Math.abs(b.t-t)?p:b,uPts[0]);
+    const delta=Math.abs(mn.st-un.st);
+    const fc=delta<1.5?CMOK:delta<3?CMAMB:CMRED;
+    const x1=xFn(tMin+i/steps*(tMax-tMin));
+    const x2=xFn(tMin+(i+1)/steps*(tMax-tMin));
+    const y1=Math.min(mYFn(mn),uYFn(un)), y2=Math.max(mYFn(mn),uYFn(un));
+    ctx.fillStyle=fc; ctx.fillRect(x1,y1,Math.max(x2-x1,1),Math.max(y2-y1,1));
+  }
+}
+
+function drawDot(ctx,x,y,col){
+  ctx.shadowColor=col; ctx.shadowBlur=16;
+  ctx.fillStyle='#ffffff'; ctx.beginPath(); ctx.arc(x,y,5,0,Math.PI*2); ctx.fill();
+  ctx.shadowBlur=0;
+}
+
+// ═══════════════════════════════════════════════════════
+//  PHASE-SPECIFIC DRAW FUNCTIONS
+// ═══════════════════════════════════════════════════════
+function drawIdleBg(){
+  const ctx=gctx(), w=CW(), h=CH();
+  ctx.fillStyle=BG; ctx.fillRect(0,0,w,h);
+  drawYAxis(ctx,w,h);
+  // Gentle animated wave (decorative, very dim)
+  ctx.strokeStyle='rgba(34,211,238,.05)'; ctx.lineWidth=1.5; ctx.lineJoin='round';
+  ctx.beginPath();
+  for(let i=0;i<=w-PL-PR;i+=2){
+    const frac=i/(w-PL-PR);
+    const st=3.5*Math.sin(frac*9+demoT)+1.8*Math.sin(frac*17-demoT*1.2)+.9*Math.sin(frac*28+demoT*.6);
+    const x=PL+i, y=stY(clamp(st,-ST_R+.5,ST_R-.5),h);
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+  // second dim wave (model color)
+  ctx.strokeStyle='rgba(255,112,67,.04)'; ctx.lineWidth=1.2;
+  ctx.beginPath();
+  for(let i=0;i<=w-PL-PR;i+=2){
+    const frac=i/(w-PL-PR);
+    const st=2.8*Math.sin(frac*7-demoT*.8)+1.4*Math.sin(frac*14+demoT)+.7*Math.sin(frac*22-demoT*.5);
+    const x=PL+i, y=stY(clamp(st,-ST_R+.5,ST_R-.5),h);
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+}
+
+function drawPreview(){
+  const now=pvOn ? pvOff+(performance.now()-pvWall)/1000 : pvOff;
+  const ctx=gctx(), w=CW(), h=CH();
+  ctx.fillStyle=BG; ctx.fillRect(0,0,w,h);
+  drawYAxis(ctx,w,h); drawXAxis(ctx,w,h,'sc',now);
+  const mWin=mNorm.filter(p=>p.t>=now-wSec&&p.t<=now+.1);
+  const xF=p=>txW(p.t,now,w), yF=p=>stY(p.st,h);
+  drawCurve(ctx,mWin,xF,yF,CMOD,CMODF,2.2,h);
+  if(mWin.length){ const l=mWin[mWin.length-1]; drawDot(ctx,xF(l),yF(l),CMOD); }
+  drawLegend(ctx,w,h,false);
+  ctx.font='8px "Space Mono",monospace'; ctx.fillStyle='#253545'; ctx.textAlign='right';
+  ctx.fillText('VISTA PREVIA',w-PR-4,PT+10);
+}
+
+function drawPracticing(){
+  const ctx=gctx(), w=CW(), h=CH();
+  ctx.fillStyle=BG; ctx.fillRect(0,0,w,h);
+  drawYAxis(ctx,w,h); drawXAxis(ctx,w,h,'sc',prEl);
+
+  // Model curve (windowed)
+  const mWin=mNorm.filter(p=>p.t>=prEl-wSec&&p.t<=prEl+.1);
+  const xFm=p=>txW(p.t,prEl,w), yFm=p=>stY(p.st,h);
+  drawCurve(ctx,mWin,xFm,yFm,CMOD,CMODF,2.2,h);
+
+  // User curve (windowed, normalized on the fly)
+  const um=uMean();
+  const uWin=uRaw
+    .filter(p=>p.t>=prEl-wSec&&p.t<=prEl+.1)
+    .map(p=>({ t:p.t, st:p.st-um }));
+  const xFu=p=>txW(p.t,prEl,w), yFu=p=>stY(p.st,h);
+  drawCurve(ctx,uWin,xFu,yFu,CUSR,CUSRF,2.2,h);
+
+  // Match fill between curves
+  drawMatchFill(ctx,mWin,uWin,t=>txW(t,prEl,w),mn=>stY(mn.st,h),un=>stY(un.st,h));
+
+  // Current-position dots
+  if(mWin.length){ const l=mWin[mWin.length-1]; drawDot(ctx,xFm(l),yFm(l),CMOD); }
+  if(uWin.length){ const l=uWin[uWin.length-1]; drawDot(ctx,xFu(l),yFu(l),CUSR); }
+  drawLegend(ctx,w,h,true);
+}
+
+function drawReview(){
+  const ctx=gctx(), w=CW(), h=CH();
+  ctx.fillStyle=BG; ctx.fillRect(0,0,w,h);
+  const dur=Math.max(mDur, rvUserRaw.length ? rvUserRaw[rvUserRaw.length-1].t+.2 : .1);
+  drawYAxis(ctx,w,h); drawXAxis(ctx,w,h,'rv',dur);
+
+  // User normalized for review
+  const um=rvUMean;
+  const uMapped=rvUserRaw.map(p=>({ t:p.t, st:p.st-um }));
+  // Model
+  const xFm=p=>txR(p.t,dur,w), yFm=p=>stY(p.st,h);
+  // User
+  const xFu=p=>txR(p.t,dur,w), yFu=p=>stY(p.st,h);
+
+  // Match fill first (behind curves)
+  drawMatchFill(ctx,rvModelNorm,uMapped,t=>txR(t,dur,w),mn=>stY(mn.st,h),un=>stY(un.st,h),120);
+
+  drawCurve(ctx,rvModelNorm,xFm,yFm,CMOD,CMODF,2,h);
+  drawCurve(ctx,uMapped,xFu,yFu,CUSR,CUSRF,2,h);
+  drawLegend(ctx,w,h,true);
+
+  ctx.font='8px "Space Mono",monospace'; ctx.fillStyle='#253545'; ctx.textAlign='right';
+  ctx.fillText('REVISIÓN COMPLETA',w-PR-4,PT+10);
+}
+
+// ── MAIN DRAW DISPATCHER ──
+function draw(){
+  switch(phase){
+    case 'idle':      drawIdleBg(); break;
+    case 'preview':   drawPreview(); break;
+    case 'countdown': drawPreview(); break; // static preview behind countdown
+    case 'practicing':case 'paused': drawPracticing(); break;
+    case 'review':    drawReview(); break;
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+//  IDLE DEMO ANIMATION
+// ═══════════════════════════════════════════════════════
+function startIdleAnim(){
+  if(demoRaf) return;
+  function tick(){ demoT+=0.022; drawIdleBg(); demoRaf=requestAnimationFrame(tick); }
+  tick();
+}
+function stopIdleAnim(){ cancelAnimationFrame(demoRaf); demoRaf=null; }
+
+// ═══════════════════════════════════════════════════════
+//  FILE LOADING & PITCH ANALYSIS
+// ═══════════════════════════════════════════════════════
+async function loadFile(file){
+  toast('Analizando audio…',6000);
+  try{
+    const arr=await file.arrayBuffer();
+    const tmp=new AudioContext();
+    const decoded=await tmp.decodeAudioData(arr.slice(0));
+    await tmp.close();
+    mAudioBuf=decoded; mDur=decoded.duration;
+
+    // Extract pitch
+    const sr=decoded.sampleRate, raw=decoded.getChannelData(0);
+    const fSize=2048, hop=Math.round(sr*.04);
+    mPitch=[];
+    for(let off=0;off+fSize<raw.length;off+=hop){
+      const hz=detectPitch(raw.slice(off,off+fSize),sr);
+      if(hz&&hz>=MIN_HZ&&hz<=MAX_HZ) mPitch.push({t:off/sr,hz});
+    }
+    if(!mPitch.length){ toast('No se detectó pitch en el audio'); return; }
+    computeModelNorm();
+
+    document.getElementById('mn').textContent=file.name;
+    document.getElementById('md').textContent=fmtT(mDur);
+    document.getElementById('ptot').textContent=fmtT(mDur);
+    pvOff=0;
+    stopIdleAnim();
+    setPhase('preview');
+    draw();
+    toast('✓ Modelo listo · Previzualizá o presioná Practicar');
+  }catch(e){ console.error(e); toast('Error al leer el archivo'); }
+}
+
+// ═══════════════════════════════════════════════════════
+//  PREVIEW PLAYBACK
+// ═══════════════════════════════════════════════════════
+function pvPlay(){
+  if(pvOn) return;
+  pvCtx=new AudioContext();
+  pvSrc=pvCtx.createBufferSource();
+  pvSrc.buffer=mAudioBuf;
+  pvSrc.connect(pvCtx.destination);
+  pvSrc.start(0,pvOff);
+  pvWall=performance.now();
+  pvOn=true;
+  setPvIcon(true);
+  function loop(){
+    if(!pvOn) return;
+    const now=pvOff+(performance.now()-pvWall)/1000;
+    document.getElementById('pb').style.width=(Math.min(now/mDur,1)*100)+'%';
+    draw();
+    if(now>=mDur+.1){ pvStop(true); return; }
+    pvRaf=requestAnimationFrame(loop);
+  }
+  pvRaf=requestAnimationFrame(loop);
+}
+
+function pvStop(finished=false){
+  if(!pvOn) return;
+  pvOff=finished?0:clamp(pvOff+(performance.now()-pvWall)/1000,0,mDur);
+  pvOn=false;
+  cancelAnimationFrame(pvRaf);
+  if(pvSrc){ try{pvSrc.stop();}catch(e){} pvSrc=null; }
+  if(pvCtx){ pvCtx.close(); pvCtx=null; }
+  setPvIcon(false);
+  if(finished) document.getElementById('pb').style.width='0%';
+  draw();
+}
+
+function pvToggle(){ pvOn?pvStop():pvPlay(); }
+
+function setPvIcon(playing){
+  document.getElementById('ic-pvplay').style.display=playing?'none':'';
+  document.getElementById('ic-pvpause').style.display=playing?'':'none';
+}
+
+// ═══════════════════════════════════════════════════════
+//  COUNTDOWN → PRACTICE
+// ═══════════════════════════════════════════════════════
+function startCountdown(){
+  pvStop();
+  pvOff=0;
+  setPhase('countdown');
+  let n=3;
+  const el=document.getElementById('cd-n');
+  el.textContent=n;
+  const tick=()=>{
+    n--;
+    if(n<=0){ setPhase('practicing'); startPractice(); return; }
+    el.style.animation='none'; void el.offsetWidth; el.style.animation='pop .5s ease-out';
+    el.textContent=n;
+    setTimeout(tick,900);
+  };
+  setTimeout(tick,900);
+}
+
+async function startPractice(){
+  uRaw=[]; uSumST=0; prEl=0; prOff=0; prPaused=false;
+
+  // Start model audio
+  praCtx=new AudioContext();
+  praSrc=praCtx.createBufferSource();
+  praSrc.buffer=mAudioBuf;
+  praSrc.connect(praCtx.destination);
+  praSrc.start(0,0);
+  prWall=performance.now();
+
+  // Start mic
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({
+      audio:{ echoCancellation:false, noiseSuppression:false, autoGainControl:false }
+    });
+    micStream=stream;
+    micCtx=new AudioContext();
+    micSrc=micCtx.createMediaStreamSource(stream);
+    micAn=micCtx.createAnalyser(); micAn.fftSize=2048;
+    micBuf=new Float32Array(micAn.fftSize);
+    micSrc.connect(micAn);
+  }catch(e){
+    toast('No se pudo acceder al micrófono'); endPractice(); return;
+  }
+  runPracticeLoop();
+}
+
+function runPracticeLoop(){
+  function loop(){
+    if(phase!=='practicing'){ cancelAnimationFrame(prRaf); return; }
+    prRaf=requestAnimationFrame(loop);
+    prEl=prOff+(performance.now()-prWall)/1000;
+
+    // Detect pitch from mic
+    if(micAn){
+      micAn.getFloatTimeDomainData(micBuf);
+      const hz=detectPitch(micBuf,micCtx.sampleRate);
+      if(hz&&hz>=MIN_HZ&&hz<=MAX_HZ){
+        const st=hST(hz);
+        uRaw.push({t:prEl,hz,st});
+        uSumST+=st;
+        updateLiveStats(hz);
+      }
+    }
+
+    document.getElementById('pt').textContent=fmtT(prEl);
+    draw();
+    if(prEl>=mDur+.15) endPractice();
+  }
+  prRaf=requestAnimationFrame(loop);
+}
+
+function pausePractice(){
+  if(phase!=='practicing') return;
+  cancelAnimationFrame(prRaf);
+  prEl=prOff+(performance.now()-prWall)/1000;
+  if(praCtx) praCtx.suspend();
+  if(micCtx) micCtx.suspend();
+  prPaused=true;
+  document.getElementById('ic-pause').style.display='none';
+  document.getElementById('ic-play').style.display='';
+  phase='paused'; draw();
+}
+
+function resumePractice(){
+  if(phase!=='practicing'&&phase!=='paused') return;
+  // Restart audio from prEl position
+  if(praSrc){ try{praSrc.stop();}catch(e){} praSrc=null; }
+  if(praCtx){ praCtx.close(); praCtx=null; }
+  praCtx=new AudioContext();
+  praSrc=praCtx.createBufferSource();
+  praSrc.buffer=mAudioBuf;
+  praSrc.connect(praCtx.destination);
+  praSrc.start(0,prEl);
+  prOff=prEl; prWall=performance.now();
+  if(micCtx) micCtx.resume();
+  prPaused=false; phase='practicing';
+  document.getElementById('ic-pause').style.display='';
+  document.getElementById('ic-play').style.display='none';
+  runPracticeLoop();
+}
+
+function stopAllAudio(){
+  cancelAnimationFrame(prRaf);
+  if(praSrc){ try{praSrc.stop();}catch(e){} praSrc=null; }
+  if(praCtx){ praCtx.close(); praCtx=null; }
+  if(micSrc){ try{micSrc.disconnect();}catch(e){} micSrc=null; }
+  if(micStream){ micStream.getTracks().forEach(t=>t.stop()); micStream=null; }
+  if(micCtx){ micCtx.close(); micCtx=null; }
+}
+
+function endPractice(){
+  stopAllAudio();
+  // Snapshot for review
+  rvModelNorm=[...mNorm];
+  rvUserRaw=[...uRaw];
+  rvUMean=uRaw.length?uSumST/uRaw.length:hST(150);
+  rvScore=computeScore();
+  showScore();
+  setPhase('review');
+  draw();
+}
+
+// ═══════════════════════════════════════════════════════
+//  SCORE
+// ═══════════════════════════════════════════════════════
+function computeScore(){
+  if(!rvModelNorm.length||!rvUserRaw.length) return null;
+  const um=rvUMean;
+  let total=0, count=0;
+  for(const mp of rvModelNorm){
+    const near=rvUserRaw.filter(u=>Math.abs(u.t-mp.t)<0.08);
+    if(!near.length) continue;
+    const uST=near.reduce((a,b)=>a+b.st,0)/near.length-um;
+    total+=Math.abs(mp.st-uST); count++;
+  }
+  return count>=5?total/count:null;
+}
+
+function showScore(){
+  const sc=rvScore;
+  const elNum=document.getElementById('sc-num');
+  const elStr=document.getElementById('sc-stars');
+  const elLbl=document.getElementById('sc-lbl');
+  if(sc===null){
+    elNum.textContent='—'; elStr.textContent='—'; elStr.style.color='var(--txtd)';
+    elLbl.textContent='Poco audio detectado'; return;
+  }
+  elNum.textContent=sc.toFixed(1)+' st';
+  let s,l,col;
+  if     (sc<1.0){ s=5; l='¡Perfecto!';          col='var(--ok)'; }
+  else if(sc<2.0){ s=4; l='¡Muy bien!';           col='var(--ok)'; }
+  else if(sc<3.5){ s=3; l='¡Bien!';               col='var(--amb)'; }
+  else if(sc<5.0){ s=2; l='Seguí practicando';    col='#fb923c'; }
+  else           { s=1; l='Intentalo de nuevo';   col='var(--red)'; }
+  elNum.style.color=col;
+  elStr.textContent='●'.repeat(s)+'○'.repeat(5-s);
+  elStr.style.color=col;
+  elLbl.textContent=l;
+}
+
+// ═══════════════════════════════════════════════════════
+//  LIVE STATS (during practice)
+// ═══════════════════════════════════════════════════════
+function updateLiveStats(userHz){
+  // Model current approx Hz
+  if(mNorm.length){
+    const mn=mNorm.reduce((b,p)=>Math.abs(p.t-prEl)<Math.abs(b.t-prEl)?p:b,mNorm[0]);
+    const mHz=Math.pow(2,(mn.st+mMeanST)/12);
+    document.getElementById('lm').textContent=mHz.toFixed(0)+' Hz';
+    // Delta
+    if(uRaw.length){
+      const uST=hST(userHz)-uMean();
+      const delta=Math.abs(mn.st-uST);
+      const db=document.getElementById('db');
+      db.textContent='Δ '+delta.toFixed(1)+' st';
+      db.className=delta<1.5?'g':delta<3?'y':'r';
+    }
+  }
+  document.getElementById('lu').textContent=userHz.toFixed(0)+' Hz';
+}
+
+// ═══════════════════════════════════════════════════════
+//  UI STATE MANAGEMENT
+// ═══════════════════════════════════════════════════════
+function setPhase(p){
+  phase=p;
+
+  // Overlays
+  document.getElementById('ov-idle').hidden = p!=='idle';
+  document.getElementById('ov-cd').hidden   = p!=='countdown';
+
+  // Step indicators
+  const idx={idle:0,preview:1,countdown:1,practicing:2,paused:2,review:3}[p]??0;
+  ['s1','s2','s3'].forEach((id,i)=>{
+    const el=document.getElementById(id);
+    const pos=i+1;
+    el.className='stp'+(pos<idx?' dn':pos===idx?' on':'');
+  });
+
+  // Control panels
+  document.getElementById('cp').hidden  = !(p==='preview'||p==='countdown');
+  document.getElementById('cpr').hidden = !(p==='practicing'||p==='paused');
+  document.getElementById('crv').hidden = p!=='review';
+
+  // Live stats bar
+  document.getElementById('ls').className=(p==='practicing'||p==='paused')?'on':'';
+
+  if(p==='idle') startIdleAnim(); else stopIdleAnim();
+}
+
+// ═══════════════════════════════════════════════════════
+//  TOAST
+// ═══════════════════════════════════════════════════════
+let toastT;
+function toast(msg,dur=2800){
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.classList.add('on');
+  clearTimeout(toastT); toastT=setTimeout(()=>el.classList.remove('on'),dur);
+}
+
+// ═══════════════════════════════════════════════════════
+//  EVENT LISTENERS
+// ═══════════════════════════════════════════════════════
+const fi=document.getElementById('fi');
+
+// Load file
+document.getElementById('btn-hero').onclick=()=>fi.click();
+fi.addEventListener('change',e=>{ const f=e.target.files[0]; if(f) loadFile(f); e.target.value=''; });
+
+// Preview
+document.getElementById('pvt').onclick=pvToggle;
+document.getElementById('btn-prac').onclick=startCountdown;
+document.getElementById('btn-chg').onclick=()=>{
+  pvStop(); pvOff=0;
+  mAudioBuf=null; mPitch=[]; mNorm=[];
+  setPhase('idle');
+};
+
+// Seek in preview progress bar
+document.getElementById('pw').addEventListener('click',e=>{
+  if(phase!=='preview') return;
+  const r=e.currentTarget.getBoundingClientRect();
+  const newOff=((e.clientX-r.left)/r.width)*mDur;
+  pvStop(); pvOff=clamp(newOff,0,mDur-0.05); pvPlay();
+});
+
+// Practice controls
+document.getElementById('btn-pause').onclick=()=>{
+  phase==='practicing'?pausePractice():resumePractice();
+};
+document.getElementById('btn-stop').onclick=endPractice;
+
+// Review controls
+document.getElementById('btn-retry').onclick=()=>{
+  pvOff=0; uRaw=[]; uSumST=0;
+  setPhase('preview'); draw();
+};
+document.getElementById('btn-newm').onclick=()=>{
+  pvOff=0; mAudioBuf=null; mPitch=[]; mNorm=[]; uRaw=[]; uSumST=0;
+  setPhase('idle');
+};
+
+// Window slider
+document.getElementById('rw').addEventListener('input',function(){
+  wSec=+this.value; document.getElementById('vw').textContent=this.value;
+});
+
+// ═══════════════════════════════════════════════════════
+//  BOOT
+// ═══════════════════════════════════════════════════════
+resize();
+setPhase('idle');
+toast('Bienvenido a PitchScope 🎙',3000);
+</script>
+</body>
+</html>
